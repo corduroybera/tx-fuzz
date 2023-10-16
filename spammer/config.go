@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"time"
 
 	txfuzz "github.com/MariusVanDerWijden/tx-fuzz"
 	"github.com/MariusVanDerWijden/tx-fuzz/flags"
@@ -22,12 +23,15 @@ import (
 type Config struct {
 	backend *rpc.Client // connection to the rpc provider
 
+	BlockTime time.Duration // time between blocks
+
 	N          uint64              // number of transactions send per account
 	faucet     *ecdsa.PrivateKey   // private key of the faucet account
 	keys       []*ecdsa.PrivateKey // private keys of accounts
 	corpus     [][]byte            // optional corpus to use elements from
 	accessList bool                // whether to create accesslist transactions
 	gasLimit   uint64              // gas limit per transaction
+	txTimeout  time.Duration       // timeout for waiting for a transaction to be mined
 
 	seed int64            // seed used for generating randomness
 	mut  *mutator.Mutator // Mutator based on the seed
@@ -48,12 +52,14 @@ func NewDefaultConfig(rpcAddr string, N uint64, accessList bool, rng *rand.Rand)
 
 	return &Config{
 		backend:    backend,
+		BlockTime:  12 * time.Second,
 		N:          N,
 		faucet:     crypto.ToECDSAUnsafe(common.FromHex(txfuzz.SK)),
 		keys:       keys,
 		corpus:     [][]byte{},
 		accessList: accessList,
 		gasLimit:   30_000_000,
+		txTimeout:  300 * time.Second,
 		seed:       0,
 		mut:        mutator.NewMutator(rng),
 	}, nil
@@ -93,11 +99,17 @@ func NewConfigFromContext(c *cli.Context) (*Config, error) {
 	// Setup N
 	N := c.Int(flags.TxCountFlag.Name)
 	if N == 0 {
-		N, err = setupN(backend, len(keys), gasLimit)
+		N, err = setupN(c.Context, backend, len(keys), gasLimit)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	// Setup block time
+	blockTime := time.Duration(c.Int(flags.BlockTimeFlag.Name)) * time.Second
+
+	// Setup txTimeout
+	txTimeout := time.Duration(c.Int(flags.TxTimeoutFlag.Name)) * time.Second
 
 	// Setup seed
 	seed := c.Int64(flags.SeedFlag.Name)
@@ -122,10 +134,12 @@ func NewConfigFromContext(c *cli.Context) (*Config, error) {
 
 	return &Config{
 		backend:    backend,
+		BlockTime:  blockTime,
 		N:          uint64(N),
 		faucet:     faucet,
 		accessList: !c.Bool(flags.NoALFlag.Name),
 		gasLimit:   uint64(gasLimit),
+		txTimeout:  txTimeout,
 		seed:       seed,
 		keys:       keys,
 		corpus:     corpus,
@@ -133,9 +147,9 @@ func NewConfigFromContext(c *cli.Context) (*Config, error) {
 	}, nil
 }
 
-func setupN(backend *rpc.Client, keys int, gasLimit int) (int, error) {
+func setupN(ctx context.Context, backend *rpc.Client, keys int, gasLimit int) (int, error) {
 	client := ethclient.NewClient(backend)
-	header, err := client.HeaderByNumber(context.Background(), nil)
+	header, err := client.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return 0, err
 	}

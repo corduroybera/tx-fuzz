@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"os"
@@ -84,19 +85,19 @@ func runAirdrop(c *cli.Context) error {
 	}
 	txPerAccount := config.N
 	airdropValue := new(big.Int).Mul(big.NewInt(int64(txPerAccount*100000)), big.NewInt(params.GWei))
-	spammer.Airdrop(config, airdropValue)
+	spammer.Airdrop(c.Context, config, airdropValue)
 	return nil
 }
 
-func spam(config *spammer.Config, spamFn spammer.Spam, airdropValue *big.Int) error {
+func spam(ctx context.Context, config *spammer.Config, spamFn spammer.Spam, airdropValue *big.Int) error {
 	// Make sure the accounts are unstuck before sending any transactions
-	spammer.Unstuck(config)
+	spammer.Unstuck(ctx, config)
 	for {
-		if err := spammer.Airdrop(config, airdropValue); err != nil {
+		if err := spammer.Airdrop(ctx, config, airdropValue); err != nil {
 			return err
 		}
-		spammer.SpamTransactions(config, spamFn)
-		time.Sleep(12 * time.Second)
+		spammer.SpamTransactions(ctx, config, spamFn)
+		time.Sleep(config.BlockTime)
 	}
 }
 
@@ -106,7 +107,7 @@ func runBasicSpam(c *cli.Context) error {
 		return err
 	}
 	airdropValue := new(big.Int).Mul(big.NewInt(int64((1+config.N)*1000000)), big.NewInt(params.GWei))
-	return spam(config, spammer.SendBasicTransactions, airdropValue)
+	return spam(c.Context, config, spammer.SendBasicTransactions, airdropValue)
 }
 
 func runBlobSpam(c *cli.Context) error {
@@ -116,7 +117,7 @@ func runBlobSpam(c *cli.Context) error {
 	}
 	airdropValue := new(big.Int).Mul(big.NewInt(int64((1+config.N)*1000000)), big.NewInt(params.GWei))
 	airdropValue = airdropValue.Mul(airdropValue, big.NewInt(100))
-	return spam(config, spammer.SendBlobTransactions, airdropValue)
+	return spam(c.Context, config, spammer.SendBlobTransactions, airdropValue)
 }
 
 func runCreate(c *cli.Context) error {
@@ -129,5 +130,5 @@ func runUnstuck(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	return spammer.Unstuck(config)
+	return spammer.Unstuck(c.Context, config)
 }

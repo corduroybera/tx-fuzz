@@ -142,26 +142,26 @@ func CreateAddresses(N int) ([]string, []string) {
 	return keys, addrs
 }
 
-func Airdrop(config *Config, value *big.Int) error {
+func Airdrop(ctx context.Context, config *Config, value *big.Int) error {
 	backend := ethclient.NewClient(config.backend)
 	sender := crypto.PubkeyToAddress(config.faucet.PublicKey)
 	var tx *types.Transaction
-	chainid, err := backend.ChainID(context.Background())
+	chainid, err := backend.ChainID(ctx)
 	if err != nil {
 		fmt.Printf("error getting chain ID; could not airdrop: %v\n", err)
 		return err
 	}
 	for _, addr := range config.keys {
-		nonce, err := backend.PendingNonceAt(context.Background(), sender)
+		nonce, err := backend.PendingNonceAt(ctx, sender)
 		if err != nil {
 			fmt.Printf("error getting pending nonce; could not airdrop: %v\n", err)
 			return err
 		}
 		to := crypto.PubkeyToAddress(addr.PublicKey)
-		gp, _ := backend.SuggestGasPrice(context.Background())
+		gp, _ := backend.SuggestGasPrice(ctx)
 		tx2 := types.NewTransaction(nonce, to, value, 21000, gp, nil)
 		signedTx, _ := types.SignTx(tx2, types.LatestSignerForChainID(chainid), config.faucet)
-		if err := backend.SendTransaction(context.Background(), signedTx); err != nil {
+		if err := backend.SendTransaction(ctx, signedTx); err != nil {
 			fmt.Printf("error sending transaction; could not airdrop: %v\n", err)
 			return err
 		}
@@ -169,7 +169,7 @@ func Airdrop(config *Config, value *big.Int) error {
 		time.Sleep(10 * time.Millisecond)
 	}
 	// Wait for the last transaction to be mined
-	if _, err := bind.WaitMined(context.Background(), backend, tx); err != nil {
+	if _, err := bind.WaitMined(ctx, backend, tx); err != nil {
 		return err
 	}
 	return nil

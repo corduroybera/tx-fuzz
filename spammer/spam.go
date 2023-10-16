@@ -1,6 +1,7 @@
 package spammer
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/rand"
@@ -9,9 +10,9 @@ import (
 	"github.com/MariusVanDerWijden/FuzzyVM/filler"
 )
 
-type Spam func(*Config, *ecdsa.PrivateKey, *filler.Filler) error
+type Spam func(context.Context, *Config, *ecdsa.PrivateKey, *filler.Filler) error
 
-func SpamTransactions(config *Config, fun Spam) error {
+func SpamTransactions(ctx context.Context, config *Config, fun Spam) error {
 	fmt.Printf("Spamming %v transactions per account on %v accounts with seed: 0x%x\n", config.N, len(config.keys), config.seed)
 
 	errCh := make(chan error, len(config.keys))
@@ -35,7 +36,7 @@ func SpamTransactions(config *Config, fun Spam) error {
 		// Start a fuzzing thread
 		go func(key *ecdsa.PrivateKey, filler *filler.Filler) {
 			defer wg.Done()
-			errCh <- fun(config, key, f)
+			errCh <- fun(ctx, config, key, f)
 		}(key, f)
 	}
 	wg.Wait()

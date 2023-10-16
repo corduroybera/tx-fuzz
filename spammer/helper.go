@@ -17,29 +17,29 @@ import (
 
 const batchSize = 50
 
-func SendTx(sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int) (*types.Transaction, error) {
+func SendTx(ctx context.Context, sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int) (*types.Transaction, error) {
 	sender := crypto.PubkeyToAddress(sk.PublicKey)
-	nonce, err := backend.NonceAt(context.Background(), sender, nil)
+	nonce, err := backend.NonceAt(ctx, sender, nil)
 	if err != nil {
 		fmt.Printf("Could not get pending nonce: %v", err)
 	}
-	return sendTxWithNonce(sk, backend, to, value, nonce)
+	return sendTxWithNonce(ctx, sk, backend, to, value, nonce)
 }
 
-func sendTxWithNonce(sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int, nonce uint64) (*types.Transaction, error) {
-	chainid, err := backend.ChainID(context.Background())
+func sendTxWithNonce(ctx context.Context, sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int, nonce uint64) (*types.Transaction, error) {
+	chainid, err := backend.ChainID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	gp, _ := backend.SuggestGasPrice(context.Background())
+	gp, _ := backend.SuggestGasPrice(ctx)
 	tx := types.NewTransaction(nonce, to, value, 500000, gp.Mul(gp, big.NewInt(100)), nil)
 	signedTx, _ := types.SignTx(tx, types.NewEIP155Signer(chainid), sk)
-	return signedTx, backend.SendTransaction(context.Background(), signedTx)
+	return signedTx, backend.SendTransaction(ctx, signedTx)
 }
 
-func sendRecurringTx(sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int, numTxs uint64) (*types.Transaction, error) {
+func sendRecurringTx(ctx context.Context, sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.Address, value *big.Int, numTxs uint64) (*types.Transaction, error) {
 	sender := crypto.PubkeyToAddress(sk.PublicKey)
-	nonce, err := backend.NonceAt(context.Background(), sender, nil)
+	nonce, err := backend.NonceAt(ctx, sender, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -47,30 +47,30 @@ func sendRecurringTx(sk *ecdsa.PrivateKey, backend *ethclient.Client, to common.
 		tx *types.Transaction
 	)
 	for i := 0; i < int(numTxs); i++ {
-		tx, err = sendTxWithNonce(sk, backend, to, value, nonce+uint64(i))
+		tx, err = sendTxWithNonce(ctx, sk, backend, to, value, nonce+uint64(i))
 	}
 	return tx, err
 }
 
-func Unstuck(config *Config) error {
-	if err := tryUnstuck(config, config.faucet); err != nil {
+func Unstuck(ctx context.Context, config *Config) error {
+	if err := tryUnstuck(ctx, config, config.faucet); err != nil {
 		return err
 	}
 	for _, key := range config.keys {
-		if err := tryUnstuck(config, key); err != nil {
+		if err := tryUnstuck(ctx, config, key); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func tryUnstuck(config *Config, sk *ecdsa.PrivateKey) error {
+func tryUnstuck(ctx context.Context, config *Config, sk *ecdsa.PrivateKey) error {
 	var (
 		client = ethclient.NewClient(config.backend)
 		addr   = crypto.PubkeyToAddress(sk.PublicKey)
 	)
 	for i := 0; i < 100; i++ {
-		noTx, err := isStuck(config, addr)
+		noTx, err := isStuck(ctx, config, addr)
 		if err != nil {
 			return err
 		}
@@ -83,11 +83,11 @@ func tryUnstuck(config *Config, sk *ecdsa.PrivateKey) error {
 			noTx = batchSize
 		}
 		fmt.Println("Sending transaction to unstuck account")
-		tx, err := sendRecurringTx(sk, client, addr, big.NewInt(1), noTx)
+		tx, err := sendRecurringTx(ctx, sk, client, addr, big.NewInt(1), noTx)
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer cancel()
 		if _, err := bind.WaitMined(ctx, client, tx); err != nil {
 			return err
@@ -97,14 +97,14 @@ func tryUnstuck(config *Config, sk *ecdsa.PrivateKey) error {
 	return errors.New("unstuck timed out, please retry manually")
 }
 
-func isStuck(config *Config, account common.Address) (uint64, error) {
+func isStuck(ctx context.Context, config *Config, account common.Address) (uint64, error) {
 	client := ethclient.NewClient(config.backend)
-	nonce, err := client.NonceAt(context.Background(), account, nil)
+	nonce, err := client.NonceAt(ctx, account, nil)
 	if err != nil {
 		return 0, err
 	}
 
-	pendingNonce, err := client.PendingNonceAt(context.Background(), account)
+	pendingNonce, err := client.PendingNonceAt(ctx, account)
 	if err != nil {
 		return 0, err
 	}

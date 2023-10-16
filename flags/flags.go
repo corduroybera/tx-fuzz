@@ -50,6 +50,18 @@ var (
 		Value: 100_000,
 	}
 
+	BlockTimeFlag = &cli.IntFlag{
+		Name:  "blocktime",
+		Usage: "Approximate time between blocks in seconds",
+		Value: 12,
+	}
+
+	TxTimeoutFlag = &cli.IntFlag{
+		Name:  "txtimeout",
+		Usage: "Timeout for waiting for a transaction to be mined in seconds",
+		Value: 300,
+	}
+
 	SpamFlags = []cli.Flag{
 		SkFlag,
 		SeedFlag,
@@ -59,5 +71,7 @@ var (
 		TxCountFlag,
 		CountFlag,
 		GasLimitFlag,
+		TxTimeoutFlag,
+		BlockTimeFlag,
 	}
 )
